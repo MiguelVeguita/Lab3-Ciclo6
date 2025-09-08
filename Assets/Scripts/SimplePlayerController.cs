@@ -9,9 +9,15 @@ public class SimplePlayerController : NetworkBehaviour
     private Animator animator;
     private Rigidbody rb;
     public LayerMask groundLayer;
+
+    public GameObject proyectil;
+    public Transform firepoint;
+
+    public float projectileSpeed = 15f;
     void Start()
     {
         animator = GetComponent<Animator>();
+        rb = GetComponent<Rigidbody>();
     }
    
     public void Update()
@@ -27,6 +33,25 @@ public class SimplePlayerController : NetworkBehaviour
         if (Input.GetKeyDown(KeyCode.Space))
         {
             JumpTriggerRpc("Jump");
+
+        }
+        if (Input.GetKeyDown(KeyCode.Mouse1))
+        {
+            // 1. Crear un rayo desde la cámara hacia la posición del ratón
+            Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+            RaycastHit hit;
+
+            // 2. Lanzar el rayo. Usamos una LayerMask para asegurarnos de que solo choque con el suelo.
+            if (Physics.Raycast(ray, out hit, Mathf.Infinity, groundLayer))
+            {
+                // 3. Calcular la dirección desde el punto de disparo al punto de impacto del rayo
+                Vector3 direction = (hit.point - firepoint.position);
+                direction.y = 0; // Ignoramos la altura para que el disparo sea horizontal
+                direction.Normalize(); // La convertimos en un vector de dirección puro
+
+                // 4. Llamar al RPC enviando la dirección calculada
+                SHOOTRpc(direction);
+            }
         }
     }
     [Rpc(SendTo.Server)]
@@ -65,5 +90,15 @@ public class SimplePlayerController : NetworkBehaviour
             Life.Value = 0;
             Debug.Log($"El jugador {PlayerID.Value} ha sido derrotado.");
         }
+    }
+
+    [Rpc(SendTo.Server)]
+    public void SHOOTRpc(Vector3 direction) // Ahora recibe la dirección
+    {
+        // 5. Usar la dirección para la rotación y la fuerza
+        GameObject proj = Instantiate(proyectil, firepoint.position, Quaternion.LookRotation(direction));
+        proj.GetComponent<NetworkObject>().Spawn(true);
+
+        proj.GetComponent<Rigidbody>().AddForce(direction * projectileSpeed, ForceMode.Impulse);
     }
 }

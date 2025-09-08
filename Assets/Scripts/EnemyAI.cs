@@ -4,6 +4,9 @@ using Unity.Netcode;
 [RequireComponent(typeof(Rigidbody))] 
 public class EnemyAI : NetworkBehaviour
 {
+    public int maxHealth = 100;
+    public NetworkVariable<int> Health = new NetworkVariable<int>();
+
     public float Speed = 5.0f;
     private Rigidbody rb;
     private Transform targetPlayer;
@@ -13,9 +16,18 @@ public class EnemyAI : NetworkBehaviour
     {
         rb = GetComponent<Rigidbody>();
     }
+    public override void OnNetworkSpawn()
+    {
+        if (IsServer)
+        {
+            Health.Value = maxHealth; // Correcto: Inicializa la vida aquí.
+        }
+    }
     void Update()
     {
         if (!IsServer) return;
+
+        
 
         checkTimer += Time.deltaTime;
         if (checkTimer >= checkInterval)
@@ -92,9 +104,31 @@ public class EnemyAI : NetworkBehaviour
             Die();
         }
     }
+   
 
+    [Rpc(SendTo.Server)]
+    public void TakeDamageRpc(int damage)
+    {
+        if (Health.Value <= 0) return;
+
+        // --- DEBUG 3: Para ver si el enemigo recibe la orden de daño ---
+        Debug.Log($"El enemigo ha recibido la orden de tomar {damage} de daño. Vida anterior: {Health.Value}");
+
+        Health.Value -= damage;
+
+        Debug.Log($"Vida nueva del enemigo: {Health.Value}");
+
+        if (Health.Value <= 0)
+        {
+            Health.Value = 0;
+            Die();
+        }
+    }
     private void Die()
     {
         GetComponent<NetworkObject>().Despawn(true);
     }
+
+
+
 }
