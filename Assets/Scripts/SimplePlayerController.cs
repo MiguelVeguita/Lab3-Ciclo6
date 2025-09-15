@@ -1,5 +1,6 @@
 using UnityEngine;
 using Unity.Netcode;
+using Unity.Collections;
 public class SimplePlayerController : NetworkBehaviour
 {
     public NetworkVariable<ulong> PlayerID;
@@ -14,12 +15,36 @@ public class SimplePlayerController : NetworkBehaviour
     public Transform firepoint;
 
     public float projectileSpeed = 15f;
+
+    public NetworkVariable<FixedString32Bytes> accoundID = new();
+    public NetworkVariable<int> health = new();
+    public NetworkVariable<int> attack = new();
+    public int maxHealth = 100;
+
+   
+    public void SetData(PlayerData playerData)
+    {
+        accoundID.Value = playerData.accountID;
+        health.Value = playerData.health;
+        attack.Value = playerData.attack;
+        transform.position = playerData.position;
+    }
     void Start()
     {
+        health.Value = maxHealth;
         animator = GetComponent<Animator>();
         rb = GetComponent<Rigidbody>();
     }
-   
+    public override void OnNetworkDespawn()
+    {
+        GameManager.Instance.playerStatesByAccoundID[accoundID.Value.ToString()]
+    = new PlayerData(accoundID.Value.ToString(),
+    transform.position,
+    health.Value,
+    attack.Value);
+
+        print("me desconecte papay "+NetworkManager.Singleton.LocalClientId);
+    }
     public void Update()
     {
         if (!IsOwner) return;
@@ -37,19 +62,14 @@ public class SimplePlayerController : NetworkBehaviour
         }
         if (Input.GetKeyDown(KeyCode.Mouse1))
         {
-            // 1. Crear un rayo desde la cámara hacia la posición del ratón
             Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
             RaycastHit hit;
 
-            // 2. Lanzar el rayo. Usamos una LayerMask para asegurarnos de que solo choque con el suelo.
             if (Physics.Raycast(ray, out hit, Mathf.Infinity, groundLayer))
             {
-                // 3. Calcular la dirección desde el punto de disparo al punto de impacto del rayo
                 Vector3 direction = (hit.point - firepoint.position);
-                direction.y = 0; // Ignoramos la altura para que el disparo sea horizontal
-                direction.Normalize(); // La convertimos en un vector de dirección puro
-
-                // 4. Llamar al RPC enviando la dirección calculada
+                direction.y = 0; 
+                direction.Normalize(); 
                 SHOOTRpc(direction);
             }
         }
@@ -83,22 +103,43 @@ public class SimplePlayerController : NetworkBehaviour
     [Rpc(SendTo.Server)]
     public void TakeDamageRpc(int damage)
     {
-        Life.Value -= damage;
+        health.Value -= damage;
 
-        if (Life.Value <= 0)
+        if (health.Value <= 0)
         {
-            Life.Value = 0;
-            Debug.Log($"El jugador {PlayerID.Value} ha sido derrotado.");
+            health.Value = 0;
+            Debug.Log($"El jugador {accoundID} ha sido derrotado.");
         }
     }
 
     [Rpc(SendTo.Server)]
-    public void SHOOTRpc(Vector3 direction) // Ahora recibe la dirección
+    public void SHOOTRpc(Vector3 direction) 
     {
-        // 5. Usar la dirección para la rotación y la fuerza
         GameObject proj = Instantiate(proyectil, firepoint.position, Quaternion.LookRotation(direction));
+
+        Proyectibles proyectilScript = proj.GetComponent<Proyectibles>();
+       /* if (proyectilScript != null)
+        {
+            proyectilScript.SetDamage(attack.Value);
+        }*/
         proj.GetComponent<NetworkObject>().Spawn(true);
 
         proj.GetComponent<Rigidbody>().AddForce(direction * projectileSpeed, ForceMode.Impulse);
+    }
+
+}
+public class PlayerData
+{
+    public string accountID;
+    public Vector3 position;
+    public int health;
+    public int attack;
+
+    public PlayerData(string id, Vector3 pos, int hp, int atk)
+    {
+        accountID = id;
+        position = pos;
+        health = hp;
+        attack = atk;
     }
 }
